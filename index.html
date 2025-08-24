@@ -446,83 +446,70 @@ async function saveOrderToEndpoint(orderData) {
 }
 
 /* ============================
-  BUILD WHATSAPP MESSAGE & SEND
+  BUILD WHATSAPP MESSAGE & SEND (Modified)
 ============================ */
 async function sendOrderToMerchant() {
-  const sendBtn = el('send-btn');
-  sendBtn.disabled = true;
-  el('order-msg').innerText = 'Processing your order...';
+    const sendBtn = el('send-btn');
+    sendBtn.disabled = true;
+    el('order-msg').innerText = 'Processing your order...';
 
-  const name = el('cust-name').value.trim();
-  const mobile = el('cust-mobile').value.trim();
-  const address = el('cust-address').value.trim();
+    const name = el('cust-name').value.trim();
+    const mobile = el('cust-mobile').value.trim();
+    const address = el('cust-address').value.trim();
 
-  if (!name || !mobile) {
-    el('order-msg').innerText = 'Please enter your name and mobile number.';
-    sendBtn.disabled = false;
-    return;
-  }
-  if (CART.length === 0) {
-    el('order-msg').innerText = 'Your cart is empty — add items first.';
-    sendBtn.disabled = false;
-    return;
-  }
-
-  try {
-    if (!LOCATION.lat) await captureLocation(true);
-  } catch (e) {
-    if (!address) {
-      el('order-msg').innerText = 'Could not get GPS. Allow location or enter an address.';
-      sendBtn.disabled = false;
-      return;
+    if (!name || !mobile) {
+        el('order-msg').innerText = 'Please enter your name and mobile number.';
+        sendBtn.disabled = false;
+        return;
     }
-  }
+    if (CART.length === 0) {
+        el('order-msg').innerText = 'Your cart is empty — add items first.';
+        sendBtn.disabled = false;
+        return;
+    }
 
-  // Prepare order data for Sanity
-  const orderData = {
-    customerName: name,
-    customerMobile: mobile,
-    address: address || 'Not provided',
-    locationUrl: LOCATION.mapsUrl || 'Not provided',
-    total: cartTotal(),
-    items: CART.map(item => ({ name: item.name, qty: item.qty, price: item.price }))
-  };
+    // Try to get the user's location
+    try {
+        if (!LOCATION.lat) await captureLocation(true);
+    } catch (e) {
+        if (!address) {
+            el('order-msg').innerText = 'Could not get GPS. Allow location or enter an address.';
+            sendBtn.disabled = false;
+            return;
+        }
+    }
 
-  // This is the new, clean section
-// Send the data to our secure endpoint
-try {
-    await saveOrderToEndpoint(orderData);
-    el('order-msg').innerText = 'Order received by server. Preparing to send on WhatsApp...';
-} catch (err) {
-    el('order-msg').innerText = 'Could not save order to server. Please try again later.';
+    // --- Start building the WhatsApp message ---
+    el('order-msg').innerText = 'Building order message...';
+    
+    const lines = [];
+    lines.push('*📦 New Order — Foodie*');
+    lines.push(`*Customer:* ${name}`);
+    lines.push(`*Customer Mobile:* ${mobile}`);
+    if (address) lines.push(`*Address:* ${address}`);
+    if (LOCATION.mapsUrl) lines.push(`*Location:* ${LOCATION.mapsUrl}`);
+    lines.push('');
+    lines.push('*Items:*');
+    CART.forEach(it => lines.push(`${it.name} × ${it.qty} — ₹${money(it.price * it.qty)}`));
+    lines.push('');
+    lines.push(`*Total:* ₹${money(cartTotal())}`);
+    lines.push('');
+    lines.push('Please confirm and prepare for delivery. Thank you!');
+
+    const text = encodeURIComponent(lines.join('\n'));
+    const waUrl = `https://wa.me/${MERCHANT_FULL}?text=${text}`;
+    
+    // Open the WhatsApp link
+    window.open(waUrl, '_blank');
+    
+    el('order-msg').innerText = 'Order sent! Opening WhatsApp...';
+    
+    // Clear the cart and re-render
+    CART = [];
+    saveCart();
+    renderCart();
+    
     sendBtn.disabled = false;
-    return;
-}
-
-  // Build message lines
-  const lines = [];
-  lines.push('*📦 New Order — TO BHOJAN*');
-  lines.push(`*Customer:* ${name}`);
-  lines.push(`*Customer Mobile:* ${mobile}`);
-  if (address) lines.push(`*Address:* ${address}`);
-  if (LOCATION.mapsUrl) lines.push(`*Location:* ${LOCATION.mapsUrl}`);
-  lines.push('');
-  lines.push('*Items:*');
-  CART.forEach(it => lines.push(`${it.name} × ${it.qty} — ₹${money(it.price * it.qty)}`));
-  lines.push('');
-  lines.push(`*Total:* ₹${money(cartTotal())}`);
-  lines.push('');
-  lines.push('Please confirm and prepare for delivery. Thank you!');
-
-  const text = encodeURIComponent(lines.join('\n'));
-  const waUrl = `https://wa.me/${MERCHANT_FULL}?text=${text}`;
-  window.open(waUrl, '_blank');
-
-  el('order-msg').innerText = 'Order sent! Opening WhatsApp...';
-  CART = []; saveCart(); renderCart();
-  // also update all card actions back to "+ Add"
-  MENU.forEach(it => renderAction(it.id));
-  sendBtn.disabled = false;
 }
 
 /* ============================
